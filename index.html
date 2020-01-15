@@ -1,0 +1,141 @@
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Simple Google OrgChart Editor</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+    <script type="text/javascript" src="js/json-url.js"></script>
+    <script src="https://code.jquery.com/jquery-3.4.1.slim.min.js" integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js" integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo" crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <script type="text/javascript">
+      var codec = JsonUrl('lzma');
+      google.charts.load('current', {packages:["orgchart"]});
+      google.charts.setOnLoadCallback(drawChart);
+        var toData = function(input){
+          var format = function(role,name){
+            return role+'<div style="color:red; font-style:italic">'+name+'</div>'
+          }
+           var arrays = input.split(/[\|\n]/)
+                    .map((x)=>x.trim())
+                    .filter((x)=>x.length)
+                    .filter((x)=>!x.startsWith("#"))
+                    .map((x)=>x.split(":").map((r)=>r.trim()))
+                    .map((x)=>{
+                      var names = (x[2]||"").split(",")
+                                    .map((n)=>n.trim())
+                                    .filter((n)=>n.length)
+                      if(names.length == 0){
+                        if(x.length == 1){
+                          return [[{v: x[0], f: x[0]},null]]
+                        }
+                       return [[{v: x[1], f: x[1]}, x[0]]]
+                      }
+                      if(names.length == 1){
+                        //boss:role:name
+                        return [[{v: x[1], f: format(x[1],names[0])},x[0]]];
+                      }
+
+                      return names.map((name)=>{return [{v: x[1]+name, f: format(x[1],name)},x[0]]})
+                    });
+            var merged = [].concat.apply([], arrays);
+            var data = new google.visualization.DataTable();
+            data.addColumn('string', 'Name');
+            data.addColumn('string', 'Manager');
+            data.addRows(merged);
+            return data;
+
+        }
+
+      function drawChart() {
+        var rawdata = $("#orgChartData").val();
+        var data = toData(rawdata);
+
+        // Create the chart.
+        var chart = new google.visualization.OrgChart(document.getElementById('chart_div'));
+        // Draw the chart, setting the allowHtml option to true for the tooltips.
+        chart.draw(data, {'allowHtml':true});
+
+        codec.compress(rawdata).then(output=>{location.hash='#'+output});
+        $("#copylink").text("Copy Link for Sharing");
+      }
+
+      function delay(callback, ms) {
+        var timer = 0;
+        return function() {
+          var context = this, args = arguments;
+          clearTimeout(timer);
+          timer = setTimeout(function () {
+            callback.apply(context, args);
+          }, ms || 0);
+        };
+      }
+      var onChartDataChanged = delay(drawChart,1000);
+    var oldChartData = "";
+    $(document).ready(function(){
+      if(location.hash){
+        try{
+          codec.decompress(location.hash.substring(1)).then((output)=>$("#orgChartData").val(output));
+        }catch(e){
+          console.log("sorry, a chart could not be loaded");
+
+        }
+      }
+      $("#orgChartData").on("change keyup paste", function() {
+          var currentVal = $(this).val();
+          if(currentVal == oldChartData) {
+              return;
+          }
+          oldChartData = currentVal;
+          onChartDataChanged();
+      });
+      $("#copylink").on("click",function(){
+          var dummy = document.createElement('input'),
+          text = window.location.href;
+
+          document.body.appendChild(dummy);
+          dummy.value = text;
+          dummy.select();
+          document.execCommand('copy');
+          document.body.removeChild(dummy);
+          $("#copylink").text("Copied!");
+      })
+    });
+   </script>
+    </head>
+  <body>
+    <div class="container-fluid">
+    <button class="btn btn-primary editor collapse show d-print-none" type="button" data-toggle="collapse" data-target=".editor" aria-expanded="false" aria-controls=".editor">
+    Edit
+  </button>
+    <div id="editor" class="collapse d-print-none editor">
+      <div class="form-group">
+        <label for="orgCharData">Chart Data</label>
+        <textarea class="form-control" id="orgChartData" rows="10">
+# Format your data like this:
+# Boss:Role:Name 1, Name 2, Name 3.
+# Each Role should be unique.
+# Note Boss is the name of the bosses role.
+# Lines beginning with '#' are ignored.
+:The Boss:Fred Flintstone
+
+The Boss:The Family:Flintsones
+The Boss:The Rubbles:Friends
+
+The Family:Pet:Dino, Baby Puss
+The Family:Wife:Wilma
+The Family:Child:Pebbles
+
+The Rubbles:Mr. Rubbles:Barney
+The Rubbles:Mrs. Rubbles:Betty
+The Rubbles:Baby Rubbles: Bamm Bamm</textarea>
+      </div>
+    <button class="btn btn-primary" type="button" data-toggle="collapse" data-target=".editor" aria-expanded="false" aria-controls=".editor">
+    Close
+  </button>
+  <button id="copylink" class="btn btn-primary">Copy Link for Sharing</button>
+    </div>
+    <div id="chart_div"></div>
+  </div>
+  </body>
+</html>
